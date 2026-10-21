@@ -130,7 +130,7 @@ h2.sec{margin:0;font-family:var(--f-display);font-weight:400;font-size:22px}
 
 .fab{position:fixed;z-index:26;right:max(18px,calc(env(safe-area-inset-right,0px) + 18px));bottom:calc(var(--nav-h) + 16px + env(safe-area-inset-bottom,0px));width:58px;height:58px;border-radius:18px;background:var(--navy);color:var(--on-navy);display:grid;place-items:center;box-shadow:0 8px 24px rgb(20 24 36 / .28)}
 .fab svg{width:26px;height:26px}
-.fab-chat{right:auto;left:max(18px,calc(env(safe-area-inset-left,0px) + 18px));width:auto;height:46px;padding:0 16px 0 12px;border-radius:999px;background:var(--surface);color:var(--ink);border:1px solid var(--line);display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;box-shadow:0 6px 18px rgb(20 24 36 / .12);bottom:calc(var(--nav-h) + 22px + env(safe-area-inset-bottom,0px))}
+.fab-chat{position:fixed;z-index:26;right:auto;left:max(18px,calc(env(safe-area-inset-left,0px) + 18px));width:auto;height:46px;padding:0 16px 0 12px;border-radius:999px;background:var(--surface);color:var(--ink);border:1px solid var(--line);display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;box-shadow:0 6px 18px rgb(20 24 36 / .12);bottom:calc(var(--nav-h) + 22px + env(safe-area-inset-bottom,0px))}
 .fab-chat svg{width:20px;height:20px;color:var(--gold)}
 @media (min-width:600px){.fab{right:calc(50% - 262px)}.fab-chat{left:calc(50% - 262px)}}
 
@@ -269,6 +269,19 @@ table.prev td.r{text-align:right}
 .att-btn,.drop{position:relative;overflow:hidden}
 .pick{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:0}
 .att-btn:focus-within{outline:2px solid var(--gold);outline-offset:2px}
+.msg.bot{max-width:92%}
+.msg ul.cl{margin:8px 0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.msg table.ct{border-collapse:collapse;margin:8px 0 4px;width:100%;font-size:13.5px}
+.msg table.ct td{padding:5px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.msg table.ct td:first-child{color:var(--muted);padding-right:12px;white-space:nowrap}
+.msg table.ct td:last-child{text-align:right;font-weight:600;overflow-wrap:anywhere}
+.msg .cbtn{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.msg .cbtn .btn{padding:8px 12px}
+.msg .cbtn .btn:disabled{opacity:.45}
+.msg .cl-list{margin-top:8px;overflow:hidden}
+.msg .cl-list .entry{padding:10px 12px}
+.msg .note{margin-top:6px}
+.linkb{color:var(--gold);font-weight:600;padding:0 2px;text-decoration:underline}
 </style>
 </head>
 <body>
@@ -444,9 +457,9 @@ table.prev td.r{text-align:right}
   <div class="grab"></div><h3>Ask T</h3>
   <div class="mode"><span class="dot"></span>Works offline · nothing leaves your phone</div>
   <div class="msgs" id="msgs">
-    <div class="msg bot">Hi. Tell me what to do in plain words and I’ll do it. Try one of these:</div>
+    <div class="msg bot">Hi. Tell me what to do in plain words. I’ll show you exactly what I’m about to save before saving it, and if I don’t understand something, I’ll ask or tell you I can’t. Try one of these:</div>
     <div class="sugg" id="sugg">
-      <button>spent 450 on tea today</button><button>bills from September</button><button>bank vs bills sheet for October</button><button>what’s due this week</button><button>convert this Excel to PDF</button>
+      <button type="button">spent 450 on tea today</button><button type="button">bills pending approval</button><button type="button">total expenses this month</button><button type="button">what’s due this week</button><button type="button">balance</button><button type="button">help</button>
     </div>
   </div>
   <form class="composer" id="chatForm"><input id="chatIn" placeholder="Type a task…" autocomplete="off"><button aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14m-6-6l6 6-6 6"/></svg></button></form>
@@ -670,9 +683,9 @@ function fieldHTML(f,v){
   else inp=`<input id="${id}" name="${f.k}" placeholder="${esc(f.ph||'')}" value="${esc(val)}" autocomplete="off">`;
   return`<div class="field"><label for="${id}">${esc(f.label)}</label>${inp}</div>`;
 }
-function openForm(type,rec){
+function openForm(type,rec,prefill){
   formType=type;editing=rec||null;clearAtts();
-  const T=TYPES[type],v=rec||{date:todayISO(),account:type==='expense'?'Bank':'Bank',status:type==='fee'?'Paid':undefined};
+  const T=TYPES[type],v=rec||{date:todayISO(),account:'Bank',status:type==='fee'?'Paid':undefined,...(prefill||{})};
   $('#formTitle').textContent=(rec?'Edit ':'New ')+T.label.toLowerCase();
   let html='',half=[];
   for(const f of T.fields){const h=fieldHTML(f,v[f.k]);if(f.half){half.push(h);if(half.length===2){html+=`<div class="two">${half.join('')}</div>`;half=[]}}else{if(half.length){html+=`<div class="two">${half.join('')}</div>`;half=[]}html+=h}}
@@ -853,12 +866,282 @@ async function onImportFile(e){
   }catch(err){imp=null;renderImport();toast('Could not read that file. Save it as .xlsx or .csv and try again.')}
 }
 
-/* ---------- chat (Step 6) ---------- */
-$('#chatBtn').onclick=()=>show('#sh-chat');
-function say(text,who){const d=document.createElement('div');d.className='msg '+who;d.textContent=text;$('#msgs').appendChild(d);$('#msgs').scrollTop=1e6}
-function ask(q){if(!q.trim())return;say(q,'me');setTimeout(()=>say('Got it. I’ll be able to do that once the assistant is built in Step 6.','bot'),350)}
-$('#sugg').onclick=e=>{if(e.target.tagName==='BUTTON')ask(e.target.textContent)};
-$('#chatForm').addEventListener('submit',e=>{e.preventDefault();ask($('#chatIn').value);$('#chatIn').value=''});
+/* ---------- create a record (used by the assistant) ---------- */
+async function createRecord(dr){
+  const now=new Date().toISOString(),T=TYPES[dr.type];
+  const rec={id:uid(),type:dr.type,createdAt:now,updatedAt:now,files:[]};
+  for(const f of T.fields)if(dr[f.k]!==undefined&&dr[f.k]!==null&&dr[f.k]!=='')rec[f.k]=dr[f.k];
+  if(dr.type==='bill')rec.status='Requested';
+  if(dr.type==='fee'&&!rec.status)rec.status='Paid';
+  await DB.put('records',rec);records.push(rec);await log('Added',rec,'via Ask T');renderAll();return rec;
+}
+/* ---------- Ask T: offline assistant ----------
+   Rule-based on purpose: it only does tasks it recognises, every number comes
+   from saved records, it asks when something is unclear, says plainly when it
+   can't, and never changes anything without a Confirm tap. */
+const CHAT=(()=>{
+const MN=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+const MRE='(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\\b';
+const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const today=()=>{const d=new Date();d.setHours(0,0,0,0);return d};
+const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
+const mIdx=s=>MN.indexOf(s.slice(0,3));
+let pending=null;
+
+/* ---- dates ---- */
+// Returns {from,to,label,day?,consumed:[strings]} or null
+function parseDate(t){
+  const T=today();let m;
+  const R=(from,to,label,day,raw)=>({from:iso(from),to:iso(to),label,day,raw});
+  if(m=t.match(/\bday before yesterday\b/)){const d=addDays(T,-2);return R(d,d,fmtDate(iso(d)),true,m[0])}
+  if(m=t.match(/\byesterday\b/)){const d=addDays(T,-1);return R(d,d,'yesterday',true,m[0])}
+  if(m=t.match(/\btoday\b/))return R(T,T,'today',true,m[0]);
+  if(m=t.match(/\b(this|last|next) week\b/)){const dow=(T.getDay()+6)%7;let s=addDays(T,-dow);if(m[1]==='last')s=addDays(s,-7);if(m[1]==='next')s=addDays(s,7);return R(s,addDays(s,6),m[1]+' week',false,m[0])}
+  if(m=t.match(/\b(this|last) month\b/)){let y=T.getFullYear(),mo=T.getMonth();if(m[1]==='last'){mo--;if(mo<0){mo=11;y--}}return R(new Date(y,mo,1),new Date(y,mo+1,0),m[1]+' month',false,m[0])}
+  if(m=t.match(/\b(this|last) (financial year|fy)\b/)){let y=T.getMonth()>=3?T.getFullYear():T.getFullYear()-1;if(m[1]==='last')y--;return R(new Date(y,3,1),new Date(y+1,2,31),'FY '+y+'–'+String(y+1).slice(2),false,m[0])}
+  if(m=t.match(/\b(this|last) year\b/)){const y=T.getFullYear()-(m[1]==='last'?1:0);return R(new Date(y,0,1),new Date(y,11,31),String(y),false,m[0])}
+  if(m=t.match(new RegExp('\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?'+MRE+'(?:,?\\s+(\\d{4}))?\\b'))){const mo=mIdx(m[2]);let y=m[3]?+m[3]:T.getFullYear();const d=new Date(y,mo,+m[1]);if(!m[3]&&d>T)d.setFullYear(y-1);return R(d,d,fmtDate(iso(d)),true,m[0])}
+  if(m=t.match(new RegExp('\\b'+MRE+'\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?\\b'))){const mo=mIdx(m[1]);let y=m[3]?+m[3]:T.getFullYear();const d=new Date(y,mo,+m[2]);if(!m[3]&&d>T)d.setFullYear(y-1);return R(d,d,fmtDate(iso(d)),true,m[0])}
+  if(m=t.match(/\b(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?\b/)){let y=m[3]?(+m[3]<100?2000+ +m[3]:+m[3]):T.getFullYear();const d=new Date(y,+m[2]-1,+m[1]);if(d.getMonth()!==+m[2]-1)return null;if(!m[3]&&d>T)d.setFullYear(y-1);return R(d,d,fmtDate(iso(d)),true,m[0])}
+  if(m=t.match(new RegExp('\\b(?:in |for |of |from )?'+MRE+'(?:\\s+(\\d{4}))?\\b'))){if(m[1]==='may'&&!/\b(in|for|of|from) may\b|\bmay \d{4}\b/.test(t))return null;const mo=mIdx(m[1]);let y=m[2]?+m[2]:T.getFullYear();if(!m[2]&&new Date(y,mo,1)>T)y--;return R(new Date(y,mo,1),new Date(y,mo+1,0),new Date(y,mo,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'}),false,m[0])}
+  return null;
+}
+
+/* ---- amounts ---- */
+function findAmounts(t){
+  const out=[];const re=/(?:₹|rs\.?|inr)?\s*(\d[\d,]*(?:\.\d{1,2})?)\s*(k|thousand|lakh|lakhs|lac|l)?\b/gi;let m;
+  while(m=re.exec(t)){let n=parseFloat(m[1].replace(/,/g,''));if(!isFinite(n))continue;const u=(m[2]||'').toLowerCase();if(u==='k'||u==='thousand')n*=1e3;if(/^(lakh|lakhs|lac|l)$/.test(u))n*=1e5;out.push({n:Math.round(n*100)/100,raw:m[0]})}
+  return out;
+}
+
+/* ---- vocabulary ---- */
+const CAT_WORDS={Food:/\b(tea|chai|nashta|khana|samosa|coffee|snacks?|lunch|dinner|breakfast|food|refreshments?|water|biscuits?|meal)\b/,Travel:/\b(travel|cab|uber|ola|auto|rickshaw|taxi|train|bus|fuel|petrol|diesel|toll|parking|flight)\b/,Printing:/\b(print(ing)?|banner|flex|xerox|photocopy|poster|brochure|standee)\b/,Events:/\b(event|meet|fest|function|ceremony|venue|decoration|stage)\b/,Scholarships:/\bscholarships?\b/,Utilities:/\b(electricity|internet|wifi|recharge|phone bill|mobile bill)\b/,Admin:/\b(stationery|courier|postage|admin|office|pen|paper)\b/};
+const INC_WORDS={Donation:/\b(donation|donated|donates?)\b/,Sponsorship:/\b(sponsor(ship|ed)?)\b/,Interest:/\binterest\b/,Refund:/\brefund(ed)?\b/};
+const ACC=t=>/\b(by|in|from|via|through|using|with)? ?cash\b/.test(t)?'Cash':/\b(upi|gpay|google pay|phonepe|paytm)\b/.test(t)?'UPI':/\b(bank|neft|rtgs|imps|cheque|card)\b/.test(t)?'Bank':null;
+const NOT_YET=[[/\b(convert|conversion|to pdf|to word|to excel|merge)\b/,'Converting files','the Conversions step'],[/\b(match|reconcile|bank vs|vs bank|working sheet)\b/,'Matching bank with bills','the Matching step'],[/\b(remind|reminder|alarm)\b/,'Reminders','the Files step'],[/\b(template|letter|voucher)\b/,'Letters from templates','the Templates step'],[/\b(scan|ocr|read the text)\b/,'Scanning and reading text','the Files step'],[/\b(backup|back up|restore|pin|password|lock)\b/,'Backup and PIN','the last step'],[/\b(report|summary|statement for)\b/,'Reports','the last step'],[/\b(formula|vlookup|sumif|spreadsheet)\b/,'Sheets and formulas','the Conversions step']];
+
+/* ---- UI ---- */
+const box=()=>$('#msgs');
+function bot(html,chips){const d=document.createElement('div');d.className='msg bot';d.innerHTML=html;box().appendChild(d);if(chips&&chips.length){const s=document.createElement('div');s.className='sugg';chips.forEach(c=>{const b=document.createElement('button');b.type='button';b.textContent=c;b.onclick=()=>send(c);s.appendChild(b)});box().appendChild(s)}box().scrollTop=1e6;return d}
+function me(t){const d=document.createElement('div');d.className='msg me';d.textContent=t;box().appendChild(d);box().scrollTop=1e6}
+const HELP_CHIPS=['spent 450 on tea today','bills pending approval','total expenses this month','what’s due this week','balance'];
+function help(prefix){bot((prefix?esc(prefix)+'<br><br>':'')+'Here’s what I can do right now:<ul class="cl"><li><b>Add</b> an expense, income, fee or bill: “paid 1200 for banner printing by cash”</li><li><b>Find</b>: “bills from September”, “fees due”, “search banner”</li><li><b>Totals</b>: “how much on food last month”, “income this FY”</li><li><b>Due</b>: “what’s due this week”, “overdue fees”</li><li><b>Balance</b>: “cash balance”</li><li><b>Hinglish works too</b>: “chai pe 200 kharcha”, “mehta se 5000 chanda mila”, “is mahine kitna kharcha hua”</li></ul>I always show you what I’ll do before saving anything.',HELP_CHIPS)}
+
+/* ---- add flow ---- */
+function detectType(t){
+  if(/\b(bill|invoice)\b/.test(t))return'bill';
+  if(/\b(fee|fees|membership|subscription from)\b/.test(t))return'fee';
+  if(/\b(received|receive|got|income|earned|credited|collected|donation|donated|sponsorship|sponsored|interest|refund)\b/.test(t))return'income';
+  if(/\b(spent|spend|paid|pay|expense|bought|buy|purchased?|cost|gave|debited)\b/.test(t))return'expense';
+  return null;
+}
+function draftFrom(t,raw){
+  const d={};const dt=parseDate(t);if(dt&&dt.day){d.date=dt.from;t=t.replace(dt.raw,' ')}
+  const acc=ACC(t);if(acc)d.account=acc;
+  let rest=t.replace(/\b(by|in|from|via|through|using|with)\s+(cash|upi|gpay|google pay|phonepe|paytm|bank|card|cheque|neft|imps|rtgs)\b/g,' ').replace(/\b(cash|upi|gpay|phonepe|paytm)\b/g,' ');
+  const amts=findAmounts(rest);
+  return{d,amts,rest};
+}
+function startAdd(t,raw,forcedType){
+  const type=forcedType||detectType(t);
+  const{d,amts,rest}=draftFrom(t,raw);
+  let r=rest;amts.forEach(a=>r=r.replace(a.raw,' '));
+  // party: "from X" / "to X" / "vendor X" / "by X"
+  let party=null,m;
+  const STOP=/^(for|on|towards|as|paid|pay|due|annual|yearly|lifetime|event|received|receive|got|donation|donated|sponsorship|sponsor|sponsored|income|fee|fees|bill|invoice|expense|spent|today|yesterday|cash|upi|bank|and|amount|interest|refund|membership|the|a|an|to|in|at|of|with|via|by|from|rs|inr|rupees|\d.*)$/;
+  if(m=r.match(/\b(?:from|vendor)\s+(.+)$/)){const ws=m[1].trim().split(' ');const keep=[];for(const w of ws){if(STOP.test(w)||keep.length>=4)break;keep.push(w)}if(keep.length){party=keep.join(' ');r=r.replace(new RegExp('\\b(?:from|vendor)\\s+'+keep.join('\\s+')),' ')}}
+  const status=type==='fee'?(/\b(due|pending|unpaid|not paid)\b/.test(t)?'Due':'Paid'):undefined;
+  const feeType=type==='fee'?(/\blifetime\b/.test(t)?'Lifetime':/\bevent\b/.test(t)?'Event':/\bannual|yearly\b/.test(t)?'Annual':'Annual'):undefined;
+  let title=r.replace(/\b(add|added|log|record|note|new|an?|the|spent|spend|paid|pay|expense|expenses|bought|buy|purchased?|cost|gave|received|receive|got|income|earned|credited|debited|collected|bill|invoice|fees?|membership|for|on|of|towards|rs\.?|rupees|inr|₹|due|pending|unpaid|not|annual|yearly|lifetime|as|amount|today|please)\b/g,' ').replace(/[^\w\s&'.,/-]/g,' ').replace(/\s+/g,' ').trim();
+  const draft={type,...d};
+  if(party){if(type==='fee'||type==='income'||type==='bill')draft.party=titleCase(party);else title=(title+' '+party).trim()}
+  if(title)draft.title=titleCase(title);
+  if(type==='fee'){draft.status=status;draft.feeType=feeType;if(!draft.party&&draft.title){draft.party=draft.title;delete draft.title}}
+  if(type==='expense'||type==='bill'){for(const[c,re]of Object.entries(CAT_WORDS))if(re.test(t)){draft.category=c;break}}
+  if(type==='income'){for(const[c,re]of Object.entries(INC_WORDS))if(re.test(t)){draft.category=c;break}}
+  if(amts.length===1)draft.amount=amts[0].n;
+  pending={kind:'add',draft,amts};
+  continueAdd();
+}
+function titleCase(s){return s.replace(/\b\w/g,c=>c.toUpperCase())}
+function continueAdd(){
+  const p=pending,dr=p.draft;
+  if(!dr.type){p.need='type';bot('Should I add '+(dr.amount!=null?'<b>'+money(dr.amount)+'</b> ':'this ')+'as an expense, income, fee or bill?',['Expense','Income','Fee','Bill','Cancel']);return}
+  if(dr.amount==null&&!p.skipAmt&&p.amts.length>1){p.need='which';bot('I found more than one number. Which is the amount?',p.amts.map(a=>money(a.n)).concat('Cancel'));return}
+  if(dr.amount==null&&!p.skipAmt){p.need='amount';bot('How much was it? You can also say “skip” to save without an amount.',['Skip','Cancel']);return}
+  confirmCard();
+}
+function confirmCard(){
+  const dr=pending.draft,T=TYPES[dr.type];
+  if(!dr.date)dr.date=todayISO();
+  if(!dr.account&&dr.type!=='bill')dr.account='Bank';
+  if(dr.type==='bill')dr.status='Requested';
+  const rows=[['Type',T.label],['Amount',dr.amount!=null?money(dr.amount):'— (blank)']];
+  if(dr.type==='fee'){rows.push(['Member',dr.party||'—'],['Fee type',dr.feeType],['Status',dr.status])}
+  else{rows.push([dr.type==='income'?'Received for':dr.type==='bill'?'Bill for':'What for',dr.title||'—']);if(dr.party)rows.push([dr.type==='bill'?'Vendor':'From',dr.party])}
+  if(dr.category)rows.push(['Category',dr.category]);
+  rows.push(['Date',fmtDate(dr.date)]);
+  if(dr.type!=='bill')rows.push([dr.type==='expense'?'Paid from':'Received in',dr.account]);
+  pending.need='confirm';
+  const el=bot('I’ll save this. Please check:<table class="ct">'+rows.map(([k,v])=>`<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')+'</table><div class="cbtn"><button type="button" class="btn" data-c="save">Save</button><button type="button" class="btn ghost" data-c="edit">Change details</button><button type="button" class="btn ghost" data-c="cancel">Cancel</button></div>');
+  el.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{el.querySelectorAll('[data-c]').forEach(x=>x.disabled=true);const c=b.dataset.c;if(c==='save')doSave();else if(c==='edit'){const dr2={...pending.draft};pending=null;openForm(dr2.type,null,dr2)}else{pending=null;bot('Cancelled. Nothing was saved.')}});
+}
+async function doSave(){
+  const dr=pending.draft;pending=null;
+  try{const rec=await createRecord(dr);bot('Saved: '+esc(TYPES[rec.type].label.toLowerCase())+' of <b>'+money(rec.amount||0)+'</b>'+(rec.title||rec.party?' for '+esc(rec.title||rec.party):'')+'. <button type="button" class="linkb" data-open-id="'+esc(rec.id)+'">Open it</button>')}
+  catch(e){bot('I couldn’t save that on this phone. Nothing was changed.')}
+}
+function answerPending(t,raw){
+  const p=pending;
+  if(/^(cancel|stop|no|never ?mind)$/.test(t)){pending=null;bot('Cancelled. Nothing was saved.');return true}
+  if(p.need==='type'){const m=t.match(/\b(expense|income|fee|bill)\b/);if(!m){if(t.split(' ').length>1){pending=null;bot('I’ve left the unfinished entry unsaved.');return false}bot('Please pick one: expense, income, fee or bill.',['Expense','Income','Fee','Bill','Cancel']);return true}
+    const keepAmt=p.draft.amount;startAdd(p.src||t,raw,m[1]);if(keepAmt!=null&&pending&&pending.draft.amount==null){pending.draft.amount=keepAmt;continueAdd()}return true}
+  if(p.need==='which'||p.need==='amount'){
+    if(p.need==='amount'&&/^skip$/.test(t)){p.skipAmt=true;delete p.draft.amount;continueAdd();return true}
+    const a=findAmounts(t);if(a.length!==1){if(/[a-z]{3,}/.test(t.replace(/\b(rs|inr|rupees|only)\b/g,''))){pending=null;bot('I’ve left the unfinished entry unsaved.');return false}bot('Please type just the amount, like 450 or 1,250.50.',p.need==='amount'?['Skip','Cancel']:['Cancel']);return true}
+    p.draft.amount=a[0].n;continueAdd();return true}
+  if(p.need==='confirm'){if(/^(yes|save|ok|okay|confirm|done|y)$/.test(t)){doSave();return true}if(t.split(' ').length>2){pending=null;bot('I haven’t saved the entry above.');return false}bot('Tap <b>Save</b>, <b>Change details</b> or <b>Cancel</b> on the card above.');return true}
+  return false;
+}
+
+/* ---- queries ---- */
+function subjectOf(t){
+  if(/\bbills?\b|\binvoices?\b/.test(t))return'bill';
+  if(/\bfees?\b|\bmembers?\b|\bdues\b/.test(t))return'fee';
+  if(/\bdonations?\b|\bsponsorships?\b/.test(t))return'don';
+  if(/\bincome\b|\breceived\b|\bearned\b|\bcame in\b/.test(t))return'income';
+  if(/\bexpenses?\b|\bspent\b|\bspend(ing)?\b|\bpaid out\b|\bpurchases?\b/.test(t))return'expense';
+  if(/\bstatement\b|\bbank lines?\b/.test(t))return'statement';
+  if(/\bentries\b|\brecords\b|\btransactions\b|\beverything\b/.test(t))return'all';
+  return null;
+}
+function inRange(r,dt){if(!dt)return true;const d=effDate(r);return d>=dt.from&&d<=dt.to}
+const PL={entries:['entry','entries'],expenses:['expense','expenses'],'income entries':['income entry','income entries'],'fee records':['fee record','fee records'],bills:['bill','bills'],donations:['donation','donations'],'bank statement lines':['bank statement line','bank statement lines'],'bills waiting for approval':['bill waiting for approval','bills waiting for approval'],'overdue items':['overdue item','overdue items'],'items due':['item due','items due']};
+const nWord=(n,w)=>n+' '+(PL[w]?PL[w][n===1?0:1]:w);
+function listCard(list,head){
+  const top=list.slice(0,12);
+  const html=esc(head)+(top.length?`<div class="card cl-list">${top.map(entryHTML).join('')}</div>`:'')+(list.length>12?`<p class="note">Showing 12 of ${list.length}. Open the Money tab to see all.</p>`:'');
+  bot(html);
+}
+function runQuery(t){
+  const dt=parseDate(t);const subj=subjectOf(t);
+  const wantTotal=/\b(total|how much|sum|spent so far|amount)\b/.test(t);
+  const wantCount=/\bhow many\b|\bcount\b/.test(t);
+  // balance
+  if(/\bbalance\b/.test(t)&&!subj){const b=balances(),acc=ACC(t);if(acc){bot(`${acc} balance: <b>${b[acc]<0?'−':''}${money(b[acc])}</b>`);return}
+    bot(`Total balance: <b>${(b.Bank+b.Cash+b.UPI)<0?'−':''}${money(b.Bank+b.Cash+b.UPI)}</b><table class="ct">${ACCOUNTS.map(a=>`<tr><td>${a}</td><td>${b[a]<0?'−':''}${money(b[a])}</td></tr>`).join('')}</table><p class="note">Worked out from the entries you’ve saved. Bank statement lines aren’t counted.</p>`);return}
+  // due
+  if(/\b(due|overdue|pending|unpaid|awaiting|waiting|to pay|outstanding)\b/.test(t)||/what.?s due/.test(t)){
+    const td=todayISO();let list=[];
+    const upto=dt&&!/\boverdue\b/.test(t)?dt.to:null;
+    const overOnly=/\boverdue\b/.test(t);
+    const approvalOnly=/\b(approval|approve|awaiting|waiting)\b/.test(t);
+    for(const r of records){
+      if(subj&&subj!=='all'&&r.type!==subj&&!(subj==='expense'&&r.type==='bill'))continue;
+      if(r.type==='bill'&&(r.status==='Requested'||r.status==='Approved')){if(approvalOnly&&r.status!=='Requested')continue;if(overOnly&&!(r.due&&r.due<td))continue;if(upto&&r.due&&r.due>upto)continue;list.push(r)}
+      else if(r.type==='fee'&&r.status==='Due'&&!approvalOnly){if(overOnly&&!(r.due&&r.due<td))continue;if(upto&&r.due&&r.due>upto)continue;list.push(r)}
+    }
+    list.sort((a,b)=>(a.due||'9').localeCompare(b.due||'9'));
+    const tot=list.reduce((s,r)=>s+(r.amount||0),0);
+    const what=approvalOnly?'bills waiting for approval':overOnly?'overdue items':'items due'+(dt&&!overOnly?' up to '+fmtDate(dt.to):'');
+    if(!list.length){bot('Nothing found: no '+esc(what)+'.');return}
+    listCard(list,`${nWord(list.length,what.replace(/ up to .*/,''))}${what.includes(' up to ')?what.slice(what.indexOf(' up to ')):''} · ${money(tot)} in total`);return}
+  // search
+  let m;const sq=t.match(/\b(?:search|find|look for|look up)\s+(?:for\s+)?(.+)/);
+  if(sq&&!subj){const q=sq[1].replace(/\b(in|from|during)\b.*$/,'').trim();if(!q){bot('What should I search for? Try a name, amount or receipt number.');return}
+    const qn=q.replace(/[,₹\s]/g,'');const list=records.filter(r=>inRange(r,dt)&&([r.title,r.party,r.ref,r.notes,r.category,r.feeType].join(' ').toLowerCase().includes(q)||(/^\d+(\.\d+)?$/.test(qn)&&String(r.amount??'').includes(qn))));
+    if(!list.length){bot('Nothing matches “'+esc(q)+'”'+(dt?' in '+esc(dt.label):'')+'.');return}
+    list.sort((a,b)=>effDate(b).localeCompare(effDate(a)));listCard(list,`${list.length} match${list.length>1?'es':''} for “${q}”`);return}
+  if(!subj&&!dt&&!wantTotal){return false}
+  // filtered list / total
+  let cat=null;for(const[c,re]of Object.entries({...CAT_WORDS,...INC_WORDS}))if(re.test(t)){cat=c;break}
+  const acc=ACC(t);
+  const s=subj||(cat?(INC_WORDS[cat]?'income':'expense'):'all');
+  const test={all:r=>r.type!=='statement',expense:r=>r.type==='expense'||(r.type==='bill'&&r.status==='Paid'),income:r=>r.type==='income'||(r.type==='fee'&&r.status==='Paid'),fee:r=>r.type==='fee',bill:r=>r.type==='bill',don:r=>r.type==='income'&&(r.category==='Donation'||r.category==='Sponsorship'),statement:r=>r.type==='statement'}[s];
+  let list=records.filter(r=>test(r)&&inRange(r,dt)&&(!cat||r.category===cat)&&(!acc||s==='statement'||(r.type==='bill'?(r.paidFrom||'Bank'):r.account)===acc));
+  if(s==='bill'&&/\bpaid\b/.test(t))list=list.filter(r=>r.status==='Paid');
+  if(s==='bill'&&/\bapproved\b/.test(t))list=list.filter(r=>r.status==='Approved');
+  if(s==='fee'&&/\bpaid\b/.test(t))list=list.filter(r=>r.status==='Paid');
+  list.sort((a,b)=>effDate(b).localeCompare(effDate(a)));
+  const label={all:'entries',expense:'expenses',income:'income entries',fee:'fee records',bill:'bills',don:'donations',statement:'bank statement lines'}[s];
+  const scope=[cat?'on '+cat.toLowerCase():'',acc?'via '+acc:'',dt?(dt.day?'on ':'in ')+dt.label:''].filter(Boolean).join(' ');
+  const tot=list.reduce((x,r)=>x+shownAmt(r),0);
+  if(!list.length){bot(`No ${label} found${scope?' '+esc(scope):''}.`);return}
+  if(wantCount&&!wantTotal){bot(`${nWord(list.length,label)}${scope?' '+esc(scope):''}.`);return}
+  if(wantTotal&&s==='all'){let i=0,o=0;list.forEach(r=>{const e=effect(r);if(e)e.v>0?i+=e.v:o-=e.v});bot(`${scope?esc(scope[0].toUpperCase()+scope.slice(1))+': ':''}in <b>${money(i)}</b>, out <b>${money(o)}</b>, net <b>${i-o<0?'−':''}${money(i-o)}</b> (from ${list.length} entries).`);return}
+  if(s==='all'){let i=0,o=0;list.forEach(r=>{const e=effect(r);if(e)e.v>0?i+=e.v:o-=e.v});listCard(list,`${nWord(list.length,label)}${scope?' '+scope:''} · in ${money(i)}, out ${money(o)}`);return}
+  listCard(list,`${nWord(list.length,label)}${scope?' '+scope:''} · ${money(tot)} in total`);
+}
+
+
+/* ---- Hinglish + common misspellings → plain English the parser knows ---- */
+const PHRASES=[
+ [/\b(iss?|is wale) (mahine|mahina|month)\b/g,'this month'],[/\b(pichh?le|pichhla|last) (mahine|mahina)\b/g,'last month'],
+ [/\b(iss?) (hafte|hafta|week)\b/g,'this week'],[/\b(pichh?le|pichhla) (hafte|hafta)\b/g,'last week'],
+ [/\b(iss?) (saal|sal|varsh)\b/g,'this year'],[/\b(pichh?le|pichhla) (saal|sal)\b/g,'last year'],
+ [/\bkharcha (kiya|kiye|hua|huye|ho gaya)\b/g,'spent'],[/\b(de diya|de diye|bhar diya|bhara|chukaya|pay kiya|pay kar diya)\b/g,'paid'],
+ [/\b(mil gaya|mil gaye|aa gaya|aa gaye|prapt hua)\b/g,'received'],[/\bke liye\b/g,'for'],[/\b(cash|nakad) (me|mein|se)\b/g,'by cash'],
+ [/\b(bank) (me|mein|se)\b/g,'by bank'],[/\b(upi|gpay|phonepe|paytm) (se|me|mein)\b/g,'by upi'],[/\bji haan\b/g,'yes'],
+ [/\b(kitna|kitne|kitni) (hua|hai|hain|tha|gaya)\b/g,'how much'],[/\b(baki|baaki) (hai|hain)\b/g,'due']
+];
+const WORDS={kharcha:'spent',kharch:'spent',kharche:'spent',kharchaa:'spent',diya:'paid',diye:'paid',chukaya:'paid',bhara:'paid',
+ mila:'received',mile:'received',aaya:'received',aaye:'received',aya:'received',prapt:'received',
+ chanda:'donation',chandaa:'donation',daan:'donation',shulk:'fee',sadasyata:'membership',baki:'due',baaki:'due',bakaya:'due',udhaar:'due',
+ aaj:'today',aj:'today',kal:'yesterday',parso:'day before yesterday',pe:'on',par:'on',ka:'',ki:'',ke:'',ko:'',hai:'',hain:'',tha:'',the:'the',
+ kiya:'',kar:'',karo:'',do:'',hua:'',gaya:'',mein:'',
+ kitna:'how much',kitne:'how much',kitni:'how much',dikhao:'show',dikha:'show',batao:'show',bata:'show',kaunse:'which',sab:'all',saare:'all',sare:'all',
+ nakad:'cash',haan:'yes',ha:'yes',han:'yes',nahi:'no',nahin:'no',mat:'no',hazaar:'thousand',hazar:'thousand',hajar:'thousand',hajaar:'thousand',
+ // misspellings
+ recieved:'received',recived:'received',receved:'received',recieve:'receive',revieved:'received',rcvd:'received',recd:'received',
+ spnt:'spent',spet:'spent',sepnt:'spent',spemt:'spent',payed:'paid',piad:'paid',pd:'paid',
+ expence:'expense',expences:'expenses',expnse:'expense',expanse:'expense',exp:'expense',exps:'expenses',expense:'expense',
+ incom:'income',incme:'income',incomes:'income',ballance:'balance',balence:'balance',balanse:'balance',bal:'balance',
+ donaton:'donation',donatoin:'donation',dontion:'donation',sponser:'sponsor',sponsr:'sponsor',sponsership:'sponsorship',
+ fess:'fees',bils:'bills',bil:'bill',totl:'total',totel:'total',tottal:'total',todya:'today',tday:'today',tdy:'today',
+ yesterdy:'yesterday',yestarday:'yesterday',ystrdy:'yesterday',yday:'yesterday',overdu:'overdue',pendng:'pending',pendig:'pending',
+ approvel:'approval',aproval:'approval',apporval:'approval',serch:'search',sarch:'search',seach:'search',mnth:'month',mnt:'month',
+ septmber:'september',sepetmber:'september',octobr:'october',novmber:'november',decmber:'december',febuary:'february',feburary:'february',
+ wk:'week',yr:'year',amt:'amount',rs:'rs',ruppes:'rupees',rupess:'rupees',rupay:'rupees',rupaye:'rupees',rupees:'rupees'};
+const FUZZ=['received','expense','expenses','income','balance','donation','sponsorship','approval','pending','overdue','yesterday','search','printing','scholarship','january','february','september','october','november','december','august','statement'];
+function lev1(a,b){if(Math.abs(a.length-b.length)>1)return false;let i=0,j=0,e=0;while(i<a.length&&j<b.length){if(a[i]===b[j]){i++;j++;continue}if(++e>1)return false;if(a.length>b.length)i++;else if(b.length>a.length)j++;else{if(a[i+1]===b[j]&&a[i]===b[j+1]){i+=2;j+=2;continue}i++;j++}}return e+(a.length-i)+(b.length-j)<=1}
+function normalize(t){
+  for(const[re,to]of PHRASES)t=t.replace(re,to);
+  // "mehta se" → "from mehta" (not for cash/bank/upi, handled above)
+  t=t.replace(/\b([a-z]{3,})\s+se\b/g,(m,w)=>/^(cash|bank|upi|kal|aaj|tab|ab)$/.test(w)?m:'from '+w);
+  t=t.split(' ').map(w=>{if(w in WORDS)return WORDS[w];if(w.length>=6&&/^[a-z]+$/.test(w)&&!FUZZ.includes(w)){const hit=FUZZ.find(f=>lev1(w,f));if(hit)return hit}return w}).join(' ');
+  return t.replace(/\s+/g,' ').trim();
+}
+/* ---- router ---- */
+function send(raw){
+  raw=String(raw||'').trim();if(!raw)return;me(raw);
+  const t=normalize(raw.toLowerCase().replace(/[’']/g,"'").replace(/\s+/g,' ').replace(/[?!।]+$/,'').trim());
+  setTimeout(()=>route(t,raw),120);
+}
+function route(t,raw){
+  if(pending&&answerPending(t,raw))return;
+  pending=null;
+  if(/^(hi|hello|hey|namaste|good (morning|afternoon|evening))\b/.test(t)&&t.split(' ').length<=3){bot('Hi. What would you like to do?',HELP_CHIPS);return}
+  if(/^(help|what can you do|commands|options|\?)$/.test(t)||/\bwhat can you\b/.test(t)){help();return}
+  if(/^(thanks|thank you|ok|okay|cool|great)\b/.test(t)){bot('You’re welcome.');return}
+  for(const[re,what,when]of NOT_YET)if(re.test(t)){bot(`I can’t do that yet. ${what} arrives in ${when}. Until then, I can add entries, find them, and give totals and balances.`,HELP_CHIPS);return}
+  const amts=findAmounts(t.replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+[a-z]{3,}\b/g,' ').replace(/\b\d{1,2}[\/\-.]\d{1,2}([\/\-.]\d{2,4})?\b/g,' ').replace(/\b(19|20)\d{2}\b/g,' '));
+  const dtq=parseDate(t);
+  const isQuery=!/^(add|log|record|note)\b/.test(t)&&(/^(show|list|find|search|look|which|what|how|total|sum|count|give|tell|get|display|any|are there|is there|all)\b/.test(t)||(!amts.length&&(/\bbalance\b|\bdue\b|\boverdue\b|\bpending\b|\bunpaid\b/.test(t)||/^(expenses?|income|bills?|fees?|donations?|sponsorships?|entries|spending)\b/.test(t)||(dtq&&!dtq.day))));
+  if(!isQuery&&(amts.length||detectType(t)||/^(add|log|record|note)\b/.test(t))){
+    if(!amts.length&&!detectType(t)&&!/^(add|log|record|note)\b/.test(t)){/* fallthrough */}
+    else{startAdd(t,raw);if(pending)pending.src=t;return}
+  }
+  if(runQuery(t)===false){help('Sorry, I didn’t understand that, so I haven’t done anything.')}
+}
+function init(){
+  $('#chatForm').addEventListener('submit',e=>{e.preventDefault();const v=$('#chatIn').value;$('#chatIn').value='';send(v)});
+  $('#sugg').addEventListener('click',e=>{if(e.target.tagName==='BUTTON')send(e.target.textContent)});
+  box().addEventListener('click',e=>{const o=e.target.closest('[data-open-id]');if(o){openDetail(o.dataset.openId)}});
+}
+return{init,send,_norm:normalize,_parseDate:parseDate,_findAmounts:findAmounts,_route:route,_state:()=>pending};
+})();
+$('#chatBtn').onclick=()=>{show('#sh-chat');setTimeout(()=>{if(matchMedia('(min-width:600px)').matches)$('#chatIn').focus()},250)};
+CHAT.init();
 
 /* ---------- header ---------- */
 const now=new Date(),h=now.getHours();
