@@ -907,11 +907,47 @@ async function log(action,r,extra){
 /* ---------- UI helpers ---------- */
 let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),2600)}
 const stack=[];
-function show(id){const el=$(id);if(stack.length&&stack[stack.length-1]!==el&&id!=='#sh-act'){stack.pop().classList.remove('on')}if(!stack.includes(el))stack.push(el);el.classList.add('on');$('#scrim').classList.add('on')}
-function hideTop(){const el=stack.pop();if(el)el.classList.remove('on');if(!stack.length)$('#scrim').classList.remove('on')}
-function hideAll(){while(stack.length)stack.pop().classList.remove('on');$('#scrim').classList.remove('on')}
+/* ---- phone back button ----
+   Each window opened by a tap adds one history step, so Android's back button closes it.
+   Closing a window by tap/X/scrim removes its step again, so the steps stay in sync. */
+const NAV=window.NAV={actual:0,skip:0,bases:0,t:0};
+const navWant=()=>stack.length+document.querySelectorAll('body>.viewer').length;
+function navSync(){clearTimeout(NAV.t);NAV.t=setTimeout(()=>{if(NAV.skip)return;const d=navWant()-NAV.actual;
+  if(d>0){for(let i=0;i<d;i++){try{history.pushState({t:'layer'},'')}catch(e){}}NAV.actual+=d}
+  else if(d<0){NAV.skip=1;NAV.actual+=d;try{history.go(d)}catch(e){NAV.skip=0}}},40)}
+function closeTopEl(){const el=stack.pop();if(el)el.classList.remove('on');if(!stack.length)$('#scrim').classList.remove('on')}
+function show(id){const el=$(id);if(!stack.includes(el)){if(stack.length&&id!=='#sh-act')stack.pop().classList.remove('on');stack.push(el)}el.classList.add('on');$('#scrim').classList.add('on');navSync()}
+function hideTop(){if(!stack.length)return;closeTopEl();navSync()}
+function hideAll(){while(stack.length)stack.pop().classList.remove('on');$('#scrim').classList.remove('on');navSync()}
 $('#scrim').onclick=hideTop;
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if($('.viewer'))$('.viewer').remove();else hideTop()}});
+(function(){
+  /* base step: lets back on another tab go Home first. Chrome only honours steps added after a tap, so add it on a tap. */
+  /* base steps under the windows: on Home keep 1 (back = "press back again" warning, next back closes T);
+     on other tabs keep 2 (back = go Home first). Chrome only honours steps added right after a tap. */
+  const topUp=()=>{if(NAV.actual||NAV.skip||navWant())return;const want=(ls.get('t.tab')||'home')==='home'?1:2;
+    if(NAV.bases<want){while(NAV.bases<want){try{history.pushState({t:'base'},'');NAV.bases++}catch(e){break}}}
+    else if(NAV.bases>want){const n=NAV.bases-want;NAV.bases=want;NAV.skip=1;try{history.go(-n)}catch(e){NAV.skip=0}}};
+  document.addEventListener('pointerdown',topUp,true);
+  document.addEventListener('click',()=>setTimeout(topUp,80));
+  new MutationObserver(ms=>{if(ms.some(m=>[...m.addedNodes,...m.removedNodes].some(n=>n.classList&&n.classList.contains('viewer'))))navSync()}).observe(document.body,{childList:true});
+  window.addEventListener('popstate',()=>{
+    if(NAV.skip){NAV.skip=0;navSync();return}
+    if(NAV.actual>0){
+      NAV.actual--;
+      const vw=$$('body>.viewer');
+      if(vw.length)vw[vw.length-1].remove();else if(stack.length)closeTopEl();
+      navSync();return;
+    }
+    /* no window open: one base step was used */
+    NAV.bases=Math.max(0,NAV.bases-1);
+    const pl=$$('.pinlock');
+    if(pl.length){const c=pl[pl.length-1].querySelector('[data-k="cancel"]');if(c&&c.textContent.trim())c.click();return}
+    const cur=ls.get('t.tab')||'home';
+    if(cur!=='home'){go('home');return}
+    toast('Press back again to close T');
+  });
+})();
 
 const ICON={
   out:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 19V5m0 14l-5-5m5 5l5-5"/></svg>',
@@ -1595,14 +1631,16 @@ function openNote(prefill,id){
    <div class="seg" id="nbKind"><button type="button" data-k="proposal">Before spending</button><button type="button" data-k="incurred">After spending</button></div>
    <div class="field"><label for="nb_subj">Subject</label><input id="nb_subj" placeholder="e.g. Technology & Subscription Services" value="${esc(NB.subject)}"></div>
    <div class="field"><label for="nb_desc" id="nb_descL"></label><input id="nb_desc" value="${esc(NB.desc)}"></div>
-   <div class="two"><div class="field"><label for="nb_date">Date</label><input id="nb_date" type="date" value="${esc(NB.date)}"></div><div class="field"><label for="nb_ap">Approval for (₹)</label><input id="nb_ap" class="num" inputmode="decimal" placeholder="= total" value="${esc(NB.approval)}"></div></div>
+   <div class="two"><div class="field"><label for="nb_date">Date</label><input id="nb_date" type="date" value="${esc(NB.date)}"></div><div class="field"><label for="nb_ap">Sanction amount (₹)</label><input id="nb_ap" class="num" inputmode="decimal" placeholder="= total expenses" value="${esc(NB.approval)}"></div></div>
    <p class="eyebrow">Particulars and bills</p><p class="hint">Rows with the same particular are added together in the approval note. The bifurcation shows every row.</p><div id="nbCols" class="sugg"></div><div id="nbItems" class="nb-items"></div>
    <div class="nb-add"><button type="button" class="btn ghost" id="nbAddRow">+ Row</button><button type="button" class="btn ghost" id="nbAddCol">+ Column</button><button type="button" class="btn ghost" id="nbPaste">Paste a list</button><button type="button" class="btn ghost" id="nbMoney">From Money</button></div>
    <div id="nbSum"></div>
    <p class="eyebrow" style="margin-top:4px">Approval note</p><div class="paper-wrap"><div id="nbPrev" class="pages"></div></div>
    <div class="exp-grid"><button type="button" class="btn" data-nx="pdf">Approval · PDF</button><button type="button" class="btn ghost" data-nx="docx">Approval · Word</button></div>
    <p class="eyebrow" style="margin-top:4px">Bifurcation (separate file)</p><div class="tbl-wrap" id="nbBif"></div>
-   <div class="exp-grid"><button type="button" class="btn" data-nx="bxlsx">Bifurcation · Excel</button><button type="button" class="btn ghost" data-nx="bpdf">Bifurcation · PDF</button>${navigator.canShare?'<button type="button" class="btn ghost wide" data-nx="share">Share both PDFs</button>':''}<button type="button" class="btn ghost" data-nx="save">Save note</button><button type="button" class="btn ghost" id="nbOrg">Logo & signatories</button></div>`;
+   <div class="exp-grid"><button type="button" class="btn" data-nx="bxlsx">Bifurcation · Excel</button><button type="button" class="btn ghost" data-nx="bpdf">Bifurcation · PDF</button></div>
+   <p class="eyebrow" style="margin-top:4px">Both files together</p><p class="hint">Makes two separate PDFs at once: the approval note and the bifurcation.</p>
+   <div class="exp-grid"><button type="button" class="btn wide" data-nx="both">Download both PDFs</button>${navigator.canShare?'<button type="button" class="btn ghost wide" data-nx="share">Share both PDFs (WhatsApp, Mail…)</button>':''}<button type="button" class="btn ghost" data-nx="save">Save note</button><button type="button" class="btn ghost" id="nbOrg">Logo & signatories</button></div>`;
   const setKind=()=>{$$('#nbKind button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.k===NB.kind));$('#nb_descL').textContent=NB.kind==='incurred'?'Point 1: “…expenses have been incurred towards …”':'Point 1: “We propose to procure the following …”';$('#nb_desc').placeholder=autoDesc(NB.subject)||'e.g. technology and subscription services'};setKind();
   $('#nbKind').onclick=e=>{const k=e.target.closest('[data-k]');if(!k)return;NB.kind=k.dataset.k;setKind();refresh()};
   $('#nb_subj').oninput=e=>{NB.subject=e.target.value;setKind();refresh()};
@@ -1628,8 +1666,8 @@ function renderItems(){
 }
 let rt;function refresh(){clearTimeout(rt);rt=setTimeout(()=>{const c=calc();
   const diff=Math.round((c.approval-c.total)*100)/100;
-  $('#nbSum').innerHTML=`<div class="card nb-sum"><table><tbody>${c.heads.map(g=>`<tr><td>${esc(g.name)}${g.n>1?` <span class="note">(${g.n} items)</span>`:''}</td><td class="r num">${R(g.amt)}</td></tr>`).join('')||'<tr><td class="note">Add heads and amounts above. Totals are worked out for you.</td></tr>'}</tbody><tfoot><tr><td>Total</td><td class="r num">${R(c.total)}</td></tr>${c.approvalSet&&diff!==0?`<tr class="${diff<0?'over':''}"><td>Approval for</td><td class="r num">${R(c.approval)}</td></tr>`:''}</tfoot></table></div>
-   ${c.approvalSet&&diff<0?`<div class="diff over">Approval amount is ${money(-diff)} less than the total.</div>`:''}
+  $('#nbSum').innerHTML=`<div class="card nb-sum"><table><tbody>${c.heads.map(g=>`<tr><td>${esc(g.name)}${g.n>1?` <span class="note">(${g.n} items)</span>`:''}</td><td class="r num">${R(g.amt)}</td></tr>`).join('')||'<tr><td class="note">Add heads and amounts above. Totals are worked out for you.</td></tr>'}</tbody><tfoot><tr><td>Total expenses</td><td class="r num">${R(c.total)}</td></tr><tr><td>Sanction amount</td><td class="r num">${R(c.approval)}</td></tr><tr class="${diff<0?'over':''}"><td>Balance</td><td class="r num">${diff<0?'− ':''}${R(Math.abs(diff))}</td></tr></tfoot></table></div>
+   ${diff<0?`<div class="diff over">Expenses are ${money(-diff)} more than the sanction amount. The bifurcation will say “Expenditure exceeds sanction”.</div>`:''}
    ${c.bad.length?`<div class="diff over">${c.bad.length} row${c.bad.length>1?'s are':' is'} missing a name or a valid amount and left out of the totals.</div>`:''}`;
   renderNotePreview(c);renderBifPreview(c);
 },120)}
@@ -1652,7 +1690,7 @@ function bifTable(c){
 }
 function renderBifPreview(c){const T=bifTable(c),bal=c.approval-c.total,pad=k=>Array(k).fill('<td></td>').join(''),after=T.hasR?1:0;
   const sum=(l,v,cls)=>`<tr class="${cls||''}"><td></td><td><b>${l}</b></td>${pad(T.ai-2)}<td class="r num"><b>${inr.format(v)}</b></td>${pad(after)}</tr>`;
-  $('#nbBif').innerHTML=`<table class="prev"><tr>${T.head.map((h,k)=>`<th${k===T.ai?' class="r"':''}>${esc(h)}</th>`).join('')}</tr>${T.body.map(r=>`<tr>${r.map((v,k)=>`<td${k===T.ai?' class="r num"':''}>${esc(k===T.ai?inr.format(v):v)}</td>`).join('')}</tr>`).join('')}${sum('Total',c.total)}${sum('Approved',c.approval)}${sum('Balance (Approved − Spent)',bal,bal<0?'over':'')}</table>`}
+  $('#nbBif').innerHTML=`<table class="prev"><tr>${T.head.map((h,k)=>`<th${k===T.ai?' class="r"':''}>${esc(h)}</th>`).join('')}</tr>${T.body.map(r=>`<tr>${r.map((v,k)=>`<td${k===T.ai?' class="r num"':''}>${esc(k===T.ai?inr.format(v):v)}</td>`).join('')}</tr>`).join('')}${sum('Total Expenditure',c.total)}${sum('Sanctioned Amount',c.approval)}${sum('Balance (Sanctioned − Spent)',bal,bal<0?'over':'')}</table>`}
 
 /* ---- your details: logo, header, signatories (add / remove / reorder) ---- */
 function orgSettings(){
@@ -1732,7 +1770,7 @@ async function noteDOCX(c){
 function bifXLSX(c){
   const T=bifTable(c),col=XLSX.utils.encode_col(T.ai),first=5,pad=k=>Array(k).fill('');
   const data=[['Bifurcation of Expenses – '+(NB.subject||'')],['Date: '+ordinalDate(NB.date)],[],T.head,...T.body];const n=data.length;
-  data.push(['','Total Expenditure',...pad(T.ai-2),{f:`SUM(${col}${first}:${col}${n})`}],['','Approved Amount',...pad(T.ai-2),c.approval],['','Balance (Approved − Spent)',...pad(T.ai-2),{f:`${col}${n+2}-${col}${n+1}`}]);
+  data.push(['','Total Expenditure',...pad(T.ai-2),{f:`SUM(${col}${first}:${col}${n})`}],['','Sanctioned Amount',...pad(T.ai-2),c.approval],['','Balance (Sanctioned − Spent)',...pad(T.ai-2),{f:`${col}${n+2}-${col}${n+1}`},...(T.hasR?[c.approval<c.total?'Expenditure exceeds sanction':'']:[])]);
   const ws=XLSX.utils.aoa_to_sheet(data);ws['!cols']=T.head.map((h,k)=>({wch:k===0?7:k===T.ai?14:Math.min(40,Math.max(12,h.length+2,...T.body.map(r=>String(r[k]??'').length+2)))}));
   for(let r=first-1;r<data.length;r++){const ref=XLSX.utils.encode_cell({r,c:T.ai});if(ws[ref])ws[ref].z='#,##,##0.00'}
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Bifurcation');return new Blob([XLSX.write(wb,{type:'array',bookType:'xlsx'})],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
@@ -1751,7 +1789,8 @@ async function bifPDF(c){
   const headRow=()=>row(T.head,{bold:true,fill:acc,txt:'#FFFFFF'});
   headRow();T.body.forEach(r=>row(r.map((v,k)=>k===T.ai?'₹ '+n0f(v):v)));
   const bal=c.approval-c.total,blank=k=>Array(k).fill('');
-  [['Total Expenditure',c.total],['Approved Amount',c.approval],['Balance (Approved − Spent)',bal]].forEach(([l,v],i)=>row(['',l,...blank(T.ai-2),(v<0?'- ':'')+'₹ '+n0f(Math.abs(v)),...(T.hasR?[i===2&&v<0?'Expenditure exceeds approval':'']:[])],{bold:true}));
+  [['Total Expenditure',c.total],['Sanctioned Amount',c.approval],['Balance (Sanctioned − Spent)',bal]].forEach(([l,v],i)=>row(['',l,...blank(T.ai-2),(v<0?'- ':'')+'₹ '+n0f(Math.abs(v)),...(T.hasR?[i===2&&v<0?'Expenditure exceeds sanction':'']:[])],{bold:true}));
+  if(bal<0&&!T.hasR){F('bold',8.5);doc.setTextColor('#9B1C1C');doc.text('Expenditure exceeds sanction by ₹ '+n0f(-bal),M,y+5);doc.setTextColor(0)}
   return doc.output('blob');
 }
 const n0f=v=>new Intl.NumberFormat('en-IN',{maximumFractionDigits:2}).format(Math.round(v*100)/100);
@@ -1761,15 +1800,16 @@ const noteName=k=>((k==='bif'?'Bifurcation - ':'Approval Note - ')+(NB.subject.t
 async function noteExport(kind,btn){
   const c=calc();
   if(kind==='save'){const now=new Date().toISOString();const rec={...JSON.parse(JSON.stringify(NB)),id:NB.id||uid('n'),updatedAt:now,createdAt:NB.createdAt||now,total:c.total};NB.id=rec.id;NB.createdAt=rec.createdAt;await DB.put('notes',rec);const i=notes.findIndex(n=>n.id===rec.id);if(i>=0)notes[i]=rec;else notes.unshift(rec);await log('Saved approval note',null,(rec.subject||'Untitled')+' · '+money(c.total));toast('Note saved. Find it in Files → Templates.');if(!$('#tplPanel').hidden)renderTemplates();return}
-  const issues=[];if(!c.valid.length)issues.push('there are no heads with an amount');if(!NB.subject.trim())issues.push('the subject is empty');if(!orgReady()&&/^(pdf|docx|share)$/.test(kind))issues.push('your logo, header and signatories aren’t added');if(c.bad.length)issues.push(c.bad.length+' row'+(c.bad.length>1?'s are':' is')+' left out (missing name or amount)');if(c.approval<c.total)issues.push('the approval amount is less than the total');
+  const issues=[];if(!c.valid.length)issues.push('there are no heads with an amount');if(!NB.subject.trim())issues.push('the subject is empty');if(!orgReady()&&/^(pdf|docx|share|both)$/.test(kind))issues.push('your logo, header and signatories aren’t added');if(c.bad.length)issues.push(c.bad.length+' row'+(c.bad.length>1?'s are':' is')+' left out (missing name or amount)');
   const go=async()=>{btn.disabled=true;const old=btn.textContent;btn.textContent='Preparing…';
     try{
       if(kind==='share'){const a=new File([await notePDF(c)],noteName('ap')+'.pdf',{type:'application/pdf'}),b=new File([await bifPDF(c)],noteName('bif')+'.pdf',{type:'application/pdf'});const fs=navigator.canShare({files:[a,b]})?[a,b]:[a];try{await navigator.share({files:fs,title:noteName('ap')});if(fs.length<2)toast('Excel can’t be shared from here, so only the PDF was shared.')}catch(e){if(e.name!=='AbortError')toast('Sharing isn’t available here. Use the download buttons.')}}
+      else if(kind==='both'){const a=await notePDF(c),b=await bifPDF(c);download(a,noteName('ap')+'.pdf');await new Promise(r=>setTimeout(r,900));download(b,noteName('bif')+'.pdf')}
       else if(kind==='pdf')download(await notePDF(c),noteName('ap')+'.pdf');
       else if(kind==='docx')download(await noteDOCX(c),noteName('ap')+'.docx');
       else if(kind==='bxlsx'){if(!window.XLSX)throw new Error('load');download(bifXLSX(c),noteName('bif')+'.xlsx')}
       else if(kind==='bpdf')download(await bifPDF(c),noteName('bif')+'.pdf');
-      if(kind!=='share')toast('Saved to Downloads');
+      if(kind==='both')toast('2 PDFs saved to Downloads: approval note and bifurcation. If your phone asks to allow multiple downloads, tap Allow.');else if(kind!=='share')toast('Saved to Downloads');
       await log('Made approval note',null,(NB.subject||'Untitled')+' · '+money(c.total)+' · '+kind);
     }catch(e){console.error(e);toast(/load/.test(e?.message)?'The file maker needs internet the first time. Connect and try again.':'Could not make the file. Please try again.')}
     finally{btn.disabled=false;btn.textContent=old}};
@@ -1787,12 +1827,12 @@ function noteIntent(t,raw){
   const items=[];const val=a=>{let n=parseFloat(a[1].replace(/,/g,''));const u=(a[2]||'').toLowerCase();if(u==='k'||u==='thousand')n*=1e3;if(/lakh|lac/.test(u))n*=1e5;return Math.round(n*100)/100};
   const AM=/(?:₹|\brs\.?|\binr)?\s*(\d[\d,]*(?:\.\d{1,2})?)\s*(k|thousand|lakh|lakhs|lac)?\b/gi;
   segs.forEach((s,i)=>{const am=[...s.matchAll(AM)];const label=s.replace(AM,' ').replace(/\s+/g,' ').trim().replace(/^((rupees|rs|only|of|for|amount|worth)\b\s*)+/i,'').replace(/(\s*\b(rupees|rs\.?|only|amount|worth|\/-))+$/i,'').trim();
-    if(/\b(approval|approve|sanction|limit)\b/i.test(s)&&am.length&&!/^approval\b/i.test(s)===false){approval=String(val(am[am.length-1]));return}
+    if(/\b(approval|approve|approved|sanction|sanctioned|limit)\b/i.test(s)&&am.length){approval=String(val(am[am.length-1]));return}
     if(i===0&&!subject&&!am.length){subject=label;return}
     if(am.length&&label){let p=label,d='';const m=label.match(/^(.+?)\s*(?:\(([^)]+)\)|\s[-–]\s(.+))$/);if(m){p=m[1];d=(m[2]||m[3]||'').trim()}items.push({p:p.trim().replace(/\b([a-z])/g,(x,c)=>c.toUpperCase()),d,a:String(val(am[0])),r:'',x:{}})}});
   subject=subject.replace(/\b(make|create|prepare|need|i need|please|an?|the|me)\b/gi,' ').replace(/\s+/g,' ').trim().replace(/\b\w/g,c=>c.toUpperCase()).replace(/\bAnd\b/g,'&');
   const tot=items.reduce((s,it)=>s+(+it.a||0),0);
-  const np=new Set(items.map(i=>i.p.toLowerCase())).size;const lines=[];if(subject)lines.push('Subject: <b>'+esc(subject)+'</b>');if(items.length)lines.push(items.length+' bill'+(items.length>1?'s':'')+' under '+np+' particular'+(np>1?'s':'')+', total <b>'+money(tot)+'</b>');if(approval)lines.push('Approval for: <b>'+money(+approval)+'</b>');
+  const np=new Set(items.map(i=>i.p.toLowerCase())).size;const lines=[];if(subject)lines.push('Subject: <b>'+esc(subject)+'</b>');if(items.length)lines.push(items.length+' bill'+(items.length>1?'s':'')+' under '+np+' particular'+(np>1?'s':'')+', total <b>'+money(tot)+'</b>');if(approval){lines.push('Sanction amount: <b>'+money(+approval)+'</b>');const d=+approval-tot;lines.push(d>0?'Balance: '+money(d)+' left':d<0?'Expenses are <b>'+money(-d)+' more</b> than the sanction':'Sanction equals the expenses')}else if(items.length)lines.push('Sanction amount: same as expenses (say “sanction 100000” to change)');
   CHAT.bot((lines.length?'I’ve started the approval note ('+(kind==='incurred'?'after spending':'before spending')+'):<br>'+lines.join('<br>'):'I’ve opened a blank approval note.')+'<br>It makes two files: the formal approval note and a separate bifurcation sheet. Please check before downloading.');
   setTimeout(()=>openNote({kind,subject,items:items.length?items:[blankItem()],approval}),700);
 }
@@ -3412,7 +3452,7 @@ const box=()=>$('#msgs');
 function bot(html,chips){const d=document.createElement('div');d.className='msg bot';d.innerHTML=html;box().appendChild(d);if(chips&&chips.length){const s=document.createElement('div');s.className='sugg';chips.forEach(c=>{const b=document.createElement('button');b.type='button';b.textContent=c;b.onclick=()=>send(c);s.appendChild(b)});box().appendChild(s)}box().scrollTop=1e6;return d}
 function me(t){const d=document.createElement('div');d.className='msg me';d.textContent=t;box().appendChild(d);box().scrollTop=1e6}
 const HELP_CHIPS=['spent 450 on tea today','bills pending approval','total expenses this month','what’s due this week','balance'];
-function help(prefix){bot((prefix?esc(prefix)+'<br><br>':'')+'Here’s what I can do right now:<ul class="cl"><li><b>Add</b> an expense, income, fee or bill: “paid 1200 for banner printing by cash”</li><li><b>Find</b>: “bills from September”, “fees due”, “search banner”</li><li><b>Totals</b>: “how much on food last month”, “income this FY”</li><li><b>Due</b>: “what’s due this week”, “overdue fees”</li><li><b>Balance</b>: “cash balance”</li><li><b>Formulas</b>: “how to write a SUMIF”, “vlookup”, “open sheet”</li><li><b>Convert</b>: “excel to pdf”, “pdf to excel”, “jpg to pdf”, “merge pdfs”</li><li><b>Ideas & privacy</b>: “idea: alumni cricket match”, “drafts”, “lock”</li><li><b>Reports</b>: “report for October”, “year end summary”, “set budget”</li><li><b>Matching</b>: “match October bank with bills”, “show unmatched”</li><li><b>Files</b>: “scan”, “inbox”, “what’s expiring”</li><li><b>Reminders</b>: “remind me to pay hall rent on 5 Nov every month”, “remind me tomorrow at 5 pm to call the vendor”</li><li><b>Approval notes</b>: “approval for technology & subscription services: Alma Shines portal 70800, LinkedIn 16500” → approval note + bifurcation</li><li><b>Signatories</b>: “signatories”, “remove Vrinda Bansal”, “add signatory Nimitesh Kumar, CFO, LBSIM”, “replace X with Y, designation”</li><li><b>Letters</b>: “approval letter for stage decoration”, “fee receipt for Sharma”</li><li><b>Hinglish works too</b>: “chai pe 200 kharcha”, “mehta se 5000 chanda mila”, “is mahine kitna kharcha hua”</li></ul>I always show you what I’ll do before saving anything.',HELP_CHIPS)}
+function help(prefix){bot((prefix?esc(prefix)+'<br><br>':'')+'Here’s what I can do right now:<ul class="cl"><li><b>Add</b> an expense, income, fee or bill: “paid 1200 for banner printing by cash”</li><li><b>Find</b>: “bills from September”, “fees due”, “search banner”</li><li><b>Totals</b>: “how much on food last month”, “income this FY”</li><li><b>Due</b>: “what’s due this week”, “overdue fees”</li><li><b>Balance</b>: “cash balance”</li><li><b>Formulas</b>: “how to write a SUMIF”, “vlookup”, “open sheet”</li><li><b>Convert</b>: “excel to pdf”, “pdf to excel”, “jpg to pdf”, “merge pdfs”</li><li><b>Ideas & privacy</b>: “idea: alumni cricket match”, “drafts”, “lock”</li><li><b>Reports</b>: “report for October”, “year end summary”, “set budget”</li><li><b>Matching</b>: “match October bank with bills”, “show unmatched”</li><li><b>Files</b>: “scan”, “inbox”, “what’s expiring”</li><li><b>Reminders</b>: “remind me to pay hall rent on 5 Nov every month”, “remind me tomorrow at 5 pm to call the vendor”</li><li><b>Approval notes</b>: “approval for alumni meet: Cab 700, Cab 800, Food 1913, sanction 5000” → approval note + bifurcation</li><li><b>Signatories</b>: “signatories”, “remove Vrinda Bansal”, “add signatory Nimitesh Kumar, CFO, LBSIM”, “replace X with Y, designation”</li><li><b>Letters</b>: “approval letter for stage decoration”, “fee receipt for Sharma”</li><li><b>Hinglish works too</b>: “chai pe 200 kharcha”, “mehta se 5000 chanda mila”, “is mahine kitna kharcha hua”</li></ul>I always show you what I’ll do before saving anything.',HELP_CHIPS)}
 
 /* ---- add flow ---- */
 function detectType(t){
